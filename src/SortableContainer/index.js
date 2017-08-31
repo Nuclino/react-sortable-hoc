@@ -69,7 +69,9 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       contentWindow: PropTypes.any,
       onSortStart: PropTypes.func,
       onSortMove: PropTypes.func,
+      onSortHover: PropTypes.func,
       onSortEnd: PropTypes.func,
+      canSortDrop: PropTypes.func,
       shouldCancelStart: PropTypes.func,
       pressDelay: PropTypes.number,
       useDragHandle: PropTypes.bool,
@@ -172,10 +174,10 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         this.manager.active = {index, collection};
 
         /*
-				 * Fixes a bug in Firefox where the :active state of anchor tags
-				 * prevent subsequent 'mousemove' events from being fired
-				 * (see https://github.com/clauderic/react-sortable-hoc/issues/118)
-				 */
+         * Fixes a bug in Firefox where the :active state of anchor tags
+         * prevent subsequent 'mousemove' events from being fired
+         * (see https://github.com/clauderic/react-sortable-hoc/issues/118)
+         */
         if (e.target.tagName.toLowerCase() === 'a') {
           e.preventDefault();
         }
@@ -565,7 +567,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
     }
 
     animateNodes() {
-      const {transitionDuration, hideSortableGhost} = this.props;
+      const {transitionDuration, hideSortableGhost, onSortHover, canSortDrop} = this.props;
       const nodes = this.manager.getOrderedRefs();
       const deltaScroll = {
         left: this.scrollContainer.scrollLeft - this.initialScroll.left,
@@ -616,21 +618,15 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         if (index === this.index) {
           if (hideSortableGhost) {
             /*
-						 * With windowing libraries such as `react-virtualized`, the sortableGhost
-						 * node may change while scrolling down and then back up (or vice-versa),
-						 * so we need to update the reference to the new node just to be safe.
-						 */
+             * With windowing libraries such as `react-virtualized`, the sortableGhost
+             * node may change while scrolling down and then back up (or vice-versa),
+             * so we need to update the reference to the new node just to be safe.
+             */
             this.sortableGhost = node;
             node.style.visibility = 'hidden';
             node.style.opacity = 0;
           }
           continue;
-        }
-
-        if (transitionDuration) {
-          node.style[
-            `${vendorPrefix}TransitionDuration`
-          ] = `${transitionDuration}ms`;
         }
 
         if (this.axis.x) {
@@ -701,27 +697,80 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
             }
           }
         } else if (this.axis.y) {
-          if (
-            index > this.index &&
-            (sortingOffset.top + scrollDifference.top) + offset.height >= edgeOffset.top
-          ) {
-            translate.y = -(this.height + this.marginOffset.y);
-            this.newIndex = index;
-          } else if (
-            index < this.index &&
-            (sortingOffset.top + scrollDifference.top) <= edgeOffset.top + offset.height
-          ) {
-            translate.y = this.height + this.marginOffset.y;
-            if (this.newIndex == null) {
+          const draggedTop = sortingOffset.top + scrollDifference.top;
+          const draggedBottom = draggedTop + this.height;
+          const edgeTop = edgeOffset.top;
+          const edgeBottom = edgeTop + height;
+
+          if (index < this.index) {
+            let shouldTranslate;
+            if (onSortHover && draggedTop < edgeBottom && draggedTop > edgeTop) {
+              const {y} = node.sortableInfo.translate;
+              shouldTranslate = onSortHover({
+                draggedIndex: this.index, draggedTop, draggedBottom,
+                targetIndex: index, targetTop: edgeTop, targetBottom: edgeBottom,
+                gapIndex: y > 0 ? index : index + 1,
+                gapPosition: draggedTop < edgeBottom + y && draggedTop > edgeTop + y ? 'BELOW' : 'ABOVE',
+              });
+            }
+            else
+              shouldTranslate = draggedTop < edgeBottom;
+
+            if (shouldTranslate) {
+              translate.y = this.height + this.marginOffset.y;
+              if (this.newIndex == null)
+                this.newIndex = index;
+            }
+          }
+          else if (index > this.index) {
+            let shouldTranslate;
+            if (onSortHover && draggedBottom > edgeTop && draggedBottom < edgeBottom) {
+              const {y} = node.sortableInfo.translate;
+              shouldTranslate = onSortHover({
+                draggedIndex: this.index, draggedTop, draggedBottom,
+                targetIndex: index, targetTop: edgeTop, targetBottom: edgeBottom,
+                gapIndex: y > 0 ? index : index + 1,
+                gapPosition: draggedTop < edgeBottom + y && draggedTop > edgeTop + y ? 'BELOW' : 'ABOVE',
+              });
+            }
+            else
+              shouldTranslate = draggedBottom > edgeTop;
+
+            if (shouldTranslate) {
+              translate.y = -(this.height + this.marginOffset.y);
               this.newIndex = index;
             }
           }
         }
-        node.style[`${vendorPrefix}Transform`] = `translate3d(${translate.x}px,${translate.y}px,0)`;
+
+        node.sortableInfo.translate = translate;
       }
 
       if (this.newIndex == null) {
         this.newIndex = this.index;
+      }
+
+      // Perform translations if drop is allowed
+      const isDropAllowed = !canSortDrop || canSortDrop({oldIndex: this.index, newIndex: this.newIndex, collection: this.manager.active.collection});
+      for (let i = 0, len = nodes.length; i < len; i++) {
+        const {node} = nodes[i];
+        const {translate} = node.sortableInfo;
+        if (!translate)
+          continue;
+
+        // Reset translation if drop is not allowed
+        if (!isDropAllowed) {
+          translate.x = 0;
+          translate.y = 0;
+        }
+
+        if (transitionDuration) {
+          node.style[
+            `${vendorPrefix}TransitionDuration`
+          ] = `${transitionDuration}ms`;
+        }
+
+        node.style[`${vendorPrefix}Transform`] = `translate3d(${translate.x}px,${translate.y}px,0)`;
       }
     }
 
