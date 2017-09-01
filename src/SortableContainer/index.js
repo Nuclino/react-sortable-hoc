@@ -705,12 +705,12 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
           if (index < this.index) {
             let shouldTranslate;
             if (onSortHover && draggedTop < edgeBottom && draggedTop > edgeTop) {
-              const {y} = node.sortableInfo.translate;
+              const hoverFromBelow = node.sortableInfo.translate.y === 0;
               shouldTranslate = onSortHover({
                 draggedIndex: this.index, draggedTop, draggedBottom,
                 targetIndex: index, targetTop: edgeTop, targetBottom: edgeBottom,
-                gapIndex: y > 0 ? index : index + 1,
-                gapPosition: draggedTop < edgeBottom + y && draggedTop > edgeTop + y ? 'BELOW' : 'ABOVE',
+                gapIndex: hoverFromBelow ? index + 1 : index,
+                gapPosition: hoverFromBelow ? 'BELOW' : 'ABOVE',
               });
             }
             else
@@ -725,12 +725,12 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
           else if (index > this.index) {
             let shouldTranslate;
             if (onSortHover && draggedBottom > edgeTop && draggedBottom < edgeBottom) {
-              const {y} = node.sortableInfo.translate;
+              const hoverFromAbove = node.sortableInfo.translate.y === 0;
               shouldTranslate = onSortHover({
                 draggedIndex: this.index, draggedTop, draggedBottom,
                 targetIndex: index, targetTop: edgeTop, targetBottom: edgeBottom,
-                gapIndex: y > 0 ? index : index + 1,
-                gapPosition: draggedTop < edgeBottom + y && draggedTop > edgeTop + y ? 'BELOW' : 'ABOVE',
+                gapIndex: hoverFromAbove ? index - 1 : index,
+                gapPosition: hoverFromAbove ? 'ABOVE' : 'BELOW',
               });
             }
             else
