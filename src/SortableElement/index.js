@@ -62,6 +62,7 @@ export default function sortableElement(WrappedComponent, config = {withRef: fal
         index,
         collection,
         manager: this.context.manager,
+        translate: { x: 0, y: 0 },
       };
 
       this.ref = {node};
