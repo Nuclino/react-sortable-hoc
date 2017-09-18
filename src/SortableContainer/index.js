@@ -226,6 +226,9 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       if (!distance) {
         this.cancel();
       }
+      else if (!this.state.sorting) {
+        this.manager.active = null;
+      }
     };
 
     cancel = () => {
