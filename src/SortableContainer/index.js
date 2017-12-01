@@ -42,6 +42,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       pressDelay: 0,
       pressThreshold: 5,
       distance: 0,
+      useCustomEvents: false,
       useWindowAsScrollContainer: false,
       hideSortableGhost: true,
       shouldCancelStart: function(e) {
@@ -75,6 +76,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       shouldCancelStart: PropTypes.func,
       pressDelay: PropTypes.number,
       useDragHandle: PropTypes.bool,
+      useCustomEvents: PropTypes.bool,
       useWindowAsScrollContainer: PropTypes.bool,
       hideSortableGhost: PropTypes.bool,
       lockToContainerEdges: PropTypes.bool,
@@ -238,20 +240,33 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       }
     };
 
-    handlePress = e => {
-      const active = this.manager.getActive();
+    // If an origin is given, no helper is created and onSortStart does not get called.
+    // This is useful when the drag starts in another container and this container should
+    // be set up to be able to handle move events.
+    handlePress = (e, origin) => {
+      const isOrigin = typeof origin === 'undefined';
+      let node;
+      if (isOrigin) {
+        const active = this.manager.getActive();
+        node = active && active.node;
+      }
+      else {
+        node = origin.node;
+        // Make the default collection active (normally set by handleStart)
+        this.manager.active = {index: null, collection: 0};
+      }
 
-      if (active) {
+      if (node) {
         const {
           axis,
           getHelperDimensions,
           helperClass,
           hideSortableGhost,
           onSortStart,
+          useCustomEvents,
           useWindowAsScrollContainer,
         } = this.props;
-        const {node, collection} = active;
-        const {index} = node.sortableInfo;
+        const {index, collection} = this.manager.active;
         const margin = getElementMargin(node);
 
         const containerBoundingRect = this.container.getBoundingClientRect();
@@ -274,7 +289,10 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
           x: axis.indexOf('x') >= 0,
           y: axis.indexOf('y') >= 0,
         };
-        this.offsetEdge = this.getEdgeOffset(node);
+        this.offsetEdge = {
+          top: this.boundingClientRect.top - this.containerBoundingRect.top + this.container.scrollTop,
+          left: this.boundingClientRect.left - this.containerBoundingRect.left + this.container.scrollLeft,
+        };
         this.initialOffset = this.getOffset(e);
         this.initialScroll = {
           top: this.scrollContainer.scrollTop,
@@ -286,32 +304,39 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
           left: window.pageXOffset,
         };
 
-        const fields = node.querySelectorAll('input, textarea, select');
-        const clonedNode = node.cloneNode(true);
-        const clonedFields = [
-          ...clonedNode.querySelectorAll('input, textarea, select'),
-        ]; // Convert NodeList to Array
+        // Only create the helper node if the press originates from this container
+        if (isOrigin) {
+          const fields = node.querySelectorAll('input, textarea, select');
+          const clonedNode = node.cloneNode(true);
+          const clonedFields = [
+            ...clonedNode.querySelectorAll('input, textarea, select'),
+          ]; // Convert NodeList to Array
 
-        clonedFields.forEach((field, index) => {
-          if (field.type !== 'file' && fields[index]) {
-            field.value = fields[index].value;
+          clonedFields.forEach((field, index) => {
+            if (field.type !== 'file' && fields[index]) {
+              field.value = fields[index].value;
+            }
+          });
+
+          this.helper = this.document.body.appendChild(clonedNode);
+
+          this.helper.style.position = 'fixed';
+          this.helper.style.top = `${this.boundingClientRect.top - margin.top}px`;
+          this.helper.style.left = `${this.boundingClientRect.left - margin.left}px`;
+          this.helper.style.width = `${this.width}px`;
+          this.helper.style.height = `${this.height}px`;
+          this.helper.style.boxSizing = 'border-box';
+          this.helper.style.pointerEvents = 'none';
+
+          if (helperClass) {
+            this.helper.classList.add(...helperClass.split(' '));
           }
-        });
 
-        this.helper = this.document.body.appendChild(clonedNode);
-
-        this.helper.style.position = 'fixed';
-        this.helper.style.top = `${this.boundingClientRect.top - margin.top}px`;
-        this.helper.style.left = `${this.boundingClientRect.left - margin.left}px`;
-        this.helper.style.width = `${this.width}px`;
-        this.helper.style.height = `${this.height}px`;
-        this.helper.style.boxSizing = 'border-box';
-        this.helper.style.pointerEvents = 'none';
-
-        if (hideSortableGhost) {
-          this.sortableGhost = node;
-          node.style.visibility = 'hidden';
-          node.style.opacity = 0;
+          if (hideSortableGhost) {
+            this.sortableGhost = node;
+            node.style.visibility = 'hidden';
+            node.style.opacity = 0;
+          }
         }
 
         this.minTranslate = {};
@@ -341,34 +366,36 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
             this.height / 2;
         }
 
-        if (helperClass) {
-          this.helper.classList.add(...helperClass.split(' '));
+        if (isOrigin && !useCustomEvents) {
+          this.listenerNode = e.touches ? node : this.contentWindow;
+          events.move.forEach(eventName =>
+            this.listenerNode.addEventListener(
+              eventName,
+              this.handleSortMove,
+              false
+            ));
+          events.end.forEach(eventName =>
+            this.listenerNode.addEventListener(
+              eventName,
+              this.handleSortEnd,
+              false
+            ));
         }
 
-        this.listenerNode = e.touches ? node : this.contentWindow;
-        events.move.forEach(eventName =>
-          this.listenerNode.addEventListener(
-            eventName,
-            this.handleSortMove,
-            false
-          ));
-        events.end.forEach(eventName =>
-          this.listenerNode.addEventListener(
-            eventName,
-            this.handleSortEnd,
-            false
-          ));
-
         this.setState({
+          isOrigin,
           sorting: true,
-          sortingIndex: index,
         });
 
-        if (onSortStart) onSortStart({node, index, collection}, e);
+        // Only call onSortStart from the origin
+        if (onSortStart && isOrigin) onSortStart({node, index, collection}, e);
       }
     };
 
     handleSortMove = e => {
+      if (this._paused)
+        this._paused = false;
+
       const {onSortMove} = this.props;
       e.preventDefault(); // Prevent scrolling on mobile
 
@@ -377,6 +404,27 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       this.autoscroll();
 
       if (onSortMove) onSortMove(e);
+    };
+
+    pauseSortMove = () => {
+      if (this._paused)
+        return;
+
+      this._paused = true;
+      const {collection} = this.manager.active;
+      const nodes = this.manager.refs[collection];
+      if (nodes) {
+        for (let i = 0, len = nodes.length; i < len; i++) {
+          const node = nodes[i];
+          const el = node.node;
+
+          // Clear the cached offsetTop / offsetLeft value
+          node.edgeOffset = null;
+
+          // Reset the transforms
+          el.style[`${vendorPrefix}Transform`] = 'translate3d(0,0,0)';
+        }
+      }
     };
 
     handleSortEnd = e => {
@@ -395,24 +443,30 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       }
 
       // Remove the helper from the DOM
-      this.helper.parentNode.removeChild(this.helper);
+      if (this.helper) {
+        this.helper.parentNode.removeChild(this.helper);
+        this.helper = null;
 
-      if (hideSortableGhost && this.sortableGhost) {
-        this.sortableGhost.style.visibility = '';
-        this.sortableGhost.style.opacity = '';
+        if (hideSortableGhost && this.sortableGhost) {
+          this.sortableGhost.style.visibility = '';
+          this.sortableGhost.style.opacity = '';
+          this.sortableGhost = null;
+        }
       }
 
       const nodes = this.manager.refs[collection];
-      for (let i = 0, len = nodes.length; i < len; i++) {
-        const node = nodes[i];
-        const el = node.node;
+      if (nodes) {
+        for (let i = 0, len = nodes.length; i < len; i++) {
+          const node = nodes[i];
+          const el = node.node;
 
-        // Clear the cached offsetTop / offsetLeft value
-        node.edgeOffset = null;
+          // Clear the cached offsetTop / offsetLeft value
+          node.edgeOffset = null;
 
-        // Remove the transforms / transitions
-        el.style[`${vendorPrefix}Transform`] = '';
-        el.style[`${vendorPrefix}TransitionDuration`] = '';
+          // Remove the transforms / transitions
+          el.style[`${vendorPrefix}Transform`] = '';
+          el.style[`${vendorPrefix}TransitionDuration`] = '';
+        }
       }
 
       // Stop autoscroll
@@ -423,8 +477,8 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       this.manager.active = null;
 
       this.setState({
+        isOrigin: false,
         sorting: false,
-        sortingIndex: null,
       });
 
       if (typeof onSortEnd === 'function') {
@@ -438,6 +492,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         );
       }
 
+      this._paused = false;
       this._touched = false;
     };
 
@@ -564,13 +619,17 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         translate.x = 0;
       }
 
-      this.helper.style[
-        `${vendorPrefix}Transform`
-      ] = `translate3d(${translate.x}px,${translate.y}px, 0)`;
+      if (this.helper) {
+        this.helper.style[
+          `${vendorPrefix}Transform`
+        ] = `translate3d(${translate.x}px,${translate.y}px, 0)`;
+      }
+
     }
 
     animateNodes() {
       const {transitionDuration, hideSortableGhost, onSortHover, canSortDrop} = this.props;
+      const {isOrigin} = this.state;
       const nodes = this.manager.getOrderedRefs();
       const deltaScroll = {
         left: this.scrollContainer.scrollLeft - this.initialScroll.left,
@@ -690,7 +749,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
               translate.x = -(this.width + this.marginOffset.x);
               this.newIndex = index;
             } else if (
-              index < this.index &&
+              (!isOrigin || index < this.index) &&
               (sortingOffset.left + scrollDifference.left) <= edgeOffset.left + offset.width
             ) {
               translate.x = this.width + this.marginOffset.x;
@@ -705,11 +764,12 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
           const edgeTop = edgeOffset.top;
           const edgeBottom = edgeTop + height;
 
-          if (index < this.index) {
+          if (!isOrigin || index < this.index) {
             let shouldTranslate;
             if (onSortHover && draggedTop < edgeBottom && draggedTop > edgeTop) {
               const hoverFromBelow = node.sortableInfo.translate.y === 0;
               shouldTranslate = onSortHover({
+                isOrigin,
                 draggedIndex: this.index, draggedTop, draggedBottom,
                 targetIndex: index, targetTop: edgeTop, targetBottom: edgeBottom,
                 gapIndex: hoverFromBelow ? index + 1 : index,
@@ -730,6 +790,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
             if (onSortHover && draggedBottom > edgeTop && draggedBottom < edgeBottom) {
               const hoverFromAbove = node.sortableInfo.translate.y === 0;
               shouldTranslate = onSortHover({
+                isOrigin,
                 draggedIndex: this.index, draggedTop, draggedBottom,
                 targetIndex: index, targetTop: edgeTop, targetBottom: edgeBottom,
                 gapIndex: hoverFromAbove ? index - 1 : index,
@@ -754,7 +815,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       }
 
       // Perform translations if drop is allowed
-      const isDropAllowed = !canSortDrop || canSortDrop({oldIndex: this.index, newIndex: this.newIndex, collection: this.manager.active.collection});
+      const isDropAllowed = !canSortDrop || canSortDrop({isOrigin, oldIndex: this.index, newIndex: this.newIndex, collection: this.manager.active.collection});
       for (let i = 0, len = nodes.length; i < len; i++) {
         const {node} = nodes[i];
         const {translate} = node.sortableInfo;
@@ -774,6 +835,10 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         }
 
         node.style[`${vendorPrefix}Transform`] = `translate3d(${translate.x}px,${translate.y}px,0)`;
+      }
+
+      if (!isDropAllowed) {
+        this.newIndex = this.index;
       }
     }
 
