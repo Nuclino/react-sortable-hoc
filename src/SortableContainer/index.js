@@ -407,7 +407,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
     };
 
     pauseSortMove = () => {
-      if (this._paused)
+      if (this._paused || !this.manager.active)
         return;
 
       this._paused = true;
