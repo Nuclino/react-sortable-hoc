@@ -407,19 +407,27 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
     };
 
     pauseSortMove = () => {
+      // Stop autoscroll
+      if (this.autoscrollInterval) {
+        clearInterval(this.autoscrollInterval);
+        this.autoscrollInterval = null;
+        this.isAutoScrolling = false;
+      }
+
       if (this._paused || !this.manager.active)
         return;
 
-      this._paused = true;
       const {collection} = this.manager.active;
       const nodes = this.manager.refs[collection];
       if (nodes) {
+        this._paused = true;
         for (let i = 0, len = nodes.length; i < len; i++) {
           const node = nodes[i];
           const el = node.node;
 
           // Clear the cached offsetTop / offsetLeft value
           node.edgeOffset = null;
+          el.sortableInfo.translate = {x: 0, y: 0};
 
           // Reset the transforms
           el.style[`${vendorPrefix}Transform`] = 'translate3d(0,0,0)';
@@ -462,6 +470,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
 
           // Clear the cached offsetTop / offsetLeft value
           node.edgeOffset = null;
+          el.sortableInfo.translate = {x: 0, y: 0};
 
           // Remove the transforms / transitions
           el.style[`${vendorPrefix}Transform`] = '';
