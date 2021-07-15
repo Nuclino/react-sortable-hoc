@@ -32,20 +32,20 @@ export default function sortableElement(WrappedComponent, config = {withRef: fal
       }
     }
 
-    componentWillReceiveProps(nextProps) {
-      if (this.props.index !== nextProps.index && this.node) {
-        this.node.sortableInfo.index = nextProps.index;
+    componentDidUpdate(prevProps) {
+      if (prevProps.index !== this.props.index && this.node) {
+        this.node.sortableInfo.index = this.props.index;
       }
-      if (this.props.disabled !== nextProps.disabled) {
-        const {collection, disabled, index} = nextProps;
+      if (prevProps.disabled !== this.props.disabled) {
+        const {collection, disabled, index} = this.props;
         if (disabled) {
           this.removeDraggable(collection);
         } else {
           this.setDraggable(collection, index);
         }
-      } else if (this.props.collection !== nextProps.collection) {
+      } else if (prevProps.collection !== this.props.collection) {
         this.removeDraggable(this.props.collection);
-        this.setDraggable(nextProps.collection, nextProps.index);
+        this.setDraggable(this.props.collection, this.props.index);
       }
     }
 
