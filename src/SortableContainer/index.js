@@ -7,7 +7,6 @@ import Manager from '../Manager';
 import {
   closest,
   events,
-  vendorPrefix,
   limit,
   getElementMargin,
   provideDisplayName,
@@ -430,7 +429,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
           el.sortableInfo.translate = {x: 0, y: 0};
 
           // Reset the transforms
-          el.style[`${vendorPrefix}Transform`] = 'translate3d(0,0,0)';
+          el.style['Transform'] = 'translate3d(0,0,0)';
         }
       }
     };
@@ -473,8 +472,8 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
           el.sortableInfo.translate = {x: 0, y: 0};
 
           // Remove the transforms / transitions
-          el.style[`${vendorPrefix}Transform`] = '';
-          el.style[`${vendorPrefix}TransitionDuration`] = '';
+          el.style['Transform'] = '';
+          el.style['TransitionDuration'] = '';
         }
       }
 
@@ -629,9 +628,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       }
 
       if (this.helper) {
-        this.helper.style[
-          `${vendorPrefix}Transform`
-        ] = `translate3d(${translate.x}px,${translate.y}px, 0)`;
+        this.helper.style['Transform'] = `translate3d(${translate.x}px,${translate.y}px, 0)`;
       }
 
     }
@@ -838,12 +835,10 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         }
 
         if (transitionDuration) {
-          node.style[
-            `${vendorPrefix}TransitionDuration`
-          ] = `${transitionDuration}ms`;
+          node.style['TransitionDuration'] = `${transitionDuration}ms`;
         }
 
-        node.style[`${vendorPrefix}Transform`] = `translate3d(${translate.x}px,${translate.y}px,0)`;
+        node.style['Transform'] = `translate3d(${translate.x}px,${translate.y}px,0)`;
       }
 
       if (!isDropAllowed) {
